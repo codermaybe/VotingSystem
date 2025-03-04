@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract VotingSystem2 {
+contract VotingSystem {
     // 创建整个投票项目，设置管理员
     constructor() {
         admin = msg.sender;
@@ -34,6 +34,7 @@ contract VotingSystem2 {
     // 投票项目结构
     struct VoteProject {
         string name;
+        address creator;
         VoteOption[] options;
         mapping(address => bool) hasVoted;
         bool isActive;
@@ -50,21 +51,23 @@ contract VotingSystem2 {
     // 事件
     event ProjectCreated(
         string projectName,
+        address creator,
         uint256 numberOfOptions,
         uint256 startTime,
         uint256 endTime
     );
+    event ProjectDeleted(string projectName, address deletedBy);
     event VoteCast(string projectName, address voter, uint256 optionIndex);
     event ProjectStatusChanged(string projectName, bool isActive);
     event AdminTransferred(address oldAdmin, address newAdmin);
 
     //----------------项目管理功能--------------------
-    // 创建新的投票项目
+    // 任何人都可以创建新的投票项目
     function createVoteProject(
         string memory projectName,
         string[] memory optionNames,
         uint256 durationInMinutes
-    ) public onlyAdmin {
+    ) public {
         require(bytes(projectName).length > 0, unicode"项目名称不能为空");
         require(optionNames.length >= 2, unicode"至少需要两个投票选项");
         require(
@@ -72,8 +75,17 @@ contract VotingSystem2 {
             unicode"该项目名称已存在"
         );
 
+        // 检查选项名称是否为空
+        for (uint i = 0; i < optionNames.length; i++) {
+            require(
+                bytes(optionNames[i]).length > 0,
+                unicode"选项名称不能为空"
+            );
+        }
+
         VoteProject storage newProject = voteProjects[projectName];
         newProject.name = projectName;
+        newProject.creator = msg.sender;
         newProject.isActive = true;
         newProject.startTime = block.timestamp;
         newProject.endTime = block.timestamp + (durationInMinutes * 1 minutes);
@@ -88,19 +100,46 @@ contract VotingSystem2 {
 
         emit ProjectCreated(
             projectName,
+            msg.sender,
             optionNames.length,
             newProject.startTime,
             newProject.endTime
         );
     }
 
-    // 更改项目状态
-    function setProjectStatus(
-        string memory projectName,
-        bool status
-    ) public onlyAdmin {
+    // 管理员删除项目功能
+    function deleteProject(string memory projectName) public onlyAdmin {
         require(voteProjects[projectName].startTime > 0, unicode"项目不存在");
-        voteProjects[projectName].isActive = status;
+
+        // 删除项目名称数组中的项目
+        for (uint i = 0; i < projectNames.length; i++) {
+            if (
+                keccak256(bytes(projectNames[i])) ==
+                keccak256(bytes(projectName))
+            ) {
+                // 将最后一个元素移动到要删除的位置，然后删除最后一个元素
+                projectNames[i] = projectNames[projectNames.length - 1];
+                projectNames.pop();
+                break;
+            }
+        }
+
+        // 由于映射无法真正删除，我们只能将其设置为无效状态
+        voteProjects[projectName].isActive = false;
+
+        emit ProjectDeleted(projectName, msg.sender);
+    }
+
+    // 更改项目状态（仅管理员或项目创建者可调用）
+    function setProjectStatus(string memory projectName, bool status) public {
+        VoteProject storage project = voteProjects[projectName];
+        require(project.startTime > 0, unicode"项目不存在");
+        require(
+            msg.sender == admin || msg.sender == project.creator,
+            unicode"仅管理员或项目创建者可调用"
+        );
+
+        project.isActive = status;
         emit ProjectStatusChanged(projectName, status);
     }
 
@@ -115,6 +154,14 @@ contract VotingSystem2 {
     // 获取项目数量
     function getProjectCount() public view returns (uint256) {
         return projectNames.length;
+    }
+
+    // 获取项目创建者
+    function getProjectCreator(
+        string memory projectName
+    ) public view returns (address) {
+        require(voteProjects[projectName].startTime > 0, unicode"项目不存在");
+        return voteProjects[projectName].creator;
     }
 
     //----------------投票功能--------------------
@@ -142,6 +189,7 @@ contract VotingSystem2 {
         view
         returns (
             bool isActive,
+            address creator,
             uint256 startTime,
             uint256 endTime,
             uint256 timeLeft,
@@ -152,6 +200,7 @@ contract VotingSystem2 {
         require(project.startTime > 0, unicode"项目不存在");
 
         isActive = project.isActive;
+        creator = project.creator;
         startTime = project.startTime;
         endTime = project.endTime;
 
