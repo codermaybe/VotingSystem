@@ -9,9 +9,6 @@ module.exports = {
     },
     localHardhat: {
       url: "http://127.0.0.1:8545",
-      accounts: [
-        process.env.HardhatPrivateKey1, //hardhat自带钱包，请勿往内转账或正常使用
-      ],
     },
 
     sepolia: {

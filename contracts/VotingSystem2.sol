@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract VotingSystem {
+contract VotingSystem2 {
     // 创建整个投票项目，设置管理员
     constructor() {
         admin = msg.sender;
@@ -69,7 +69,10 @@ contract VotingSystem {
         uint256 durationInMinutes
     ) public {
         require(bytes(projectName).length > 0, unicode"项目名称不能为空");
-        require(optionNames.length >= 2, unicode"至少需要两个投票选项");
+        require(
+            (optionNames.length >= 2) && (optionNames.length <= 255),
+            unicode"投票选项数数量必须在2到255之间"
+        );
         require(
             voteProjects[projectName].startTime == 0,
             unicode"该项目名称已存在"
@@ -107,39 +110,45 @@ contract VotingSystem {
         );
     }
 
-    // 管理员删除项目功能
-    function deleteProject(string memory projectName) public onlyAdmin {
+    modifier onlyAdminOrCreator(string memory projectName) {
         require(voteProjects[projectName].startTime > 0, unicode"项目不存在");
+        require(
+            msg.sender == admin ||
+                msg.sender == voteProjects[projectName].creator,
+            unicode"仅管理员或项目创建者可调用"
+        );
+        _;
+    }
 
+    // 删除项目功能(仅管理员或项目创建者可调用)
+    function deleteProject(
+        string memory projectName
+    ) public onlyAdminOrCreator(projectName) {
         // 删除项目名称数组中的项目
         for (uint i = 0; i < projectNames.length; i++) {
             if (
                 keccak256(bytes(projectNames[i])) ==
                 keccak256(bytes(projectName))
             ) {
-                // 将最后一个元素移动到要删除的位置，然后删除最后一个元素
+                // 将最后一个元素移动到要删除的位置，然后删除最后一个元素 关于这一点覆盖的尝试也可以通过其他方式实现，例如添加控制修饰器，但在区块链平台上如果利用某个项目展示非法信息的话无法彻底被删除
                 projectNames[i] = projectNames[projectNames.length - 1];
                 projectNames.pop();
                 break;
             }
         }
 
-        // 由于映射无法真正删除，我们只能将其设置为无效状态
+        // 由于映射无法真正删除，只能将其设置为无效状态，在porjecatNames中删除项目后，无法再通过它查询到投票项目，除非项目名被重新请求创建，但此时项目名已经存在且验证存在的方式为访问原项目的startTime，所以无法创建投票项目
         voteProjects[projectName].isActive = false;
 
         emit ProjectDeleted(projectName, msg.sender);
     }
 
     // 更改项目状态（仅管理员或项目创建者可调用）
-    function setProjectStatus(string memory projectName, bool status) public {
-        VoteProject storage project = voteProjects[projectName];
-        require(project.startTime > 0, unicode"项目不存在");
-        require(
-            msg.sender == admin || msg.sender == project.creator,
-            unicode"仅管理员或项目创建者可调用"
-        );
-
-        project.isActive = status;
+    function setProjectStatus(
+        string memory projectName,
+        bool status
+    ) public onlyAdminOrCreator(projectName) {
+        voteProjects[projectName].isActive = status;
         emit ProjectStatusChanged(projectName, status);
     }
 
